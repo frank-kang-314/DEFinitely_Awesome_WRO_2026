@@ -32,7 +32,7 @@ def main() -> None:
         lidar.disconnect()
 
 def detect_port() -> str:
-    ports = list(serial.tools.list_ports.comports())  # outputs all the ports connected
+    ports = list(serial.tools.list_ports.comports())
     if not ports: 
         print("No USB Serial devices found.")
     else: 
