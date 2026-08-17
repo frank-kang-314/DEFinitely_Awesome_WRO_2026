@@ -1,6 +1,9 @@
 import time
 from rplidar import RPLidar, RPLidarException
-import serial, serial.tools.list_ports
+
+from usbmonitor import USBMonitor
+from usbmonitor.attributes import ID_MODEL, ID_MODEL_ID, ID_VENDOR_ID
+        
 
 def main() -> None:
     lidar = RPLidar(detect_port(), baudrate=115200)
@@ -32,23 +35,19 @@ def main() -> None:
         lidar.disconnect()
 
 def detect_port() -> str:
-    ports = list(serial.tools.list_ports.comports())
-    if not ports: 
-        print("No USB Serial devices found.")
-    else: 
-        for port, desc, hwid in sorted(ports):
-            print(f'Port: {port}')
-            print(f'Description: {desc}')
-            print(f'Hardware ID: {hwid}')
+    # Create the USBMonitor instance
+    monitor = USBMonitor()
 
-            print(hwid.split(" "))
-            print(hwid.split(" ")[1])
+    # Get the current devices
+    devices_dict = monitor.get_available_devices()
 
-            if hwid.split(" ")[1] == "VID:PID=1A86:7523":
-                print(f"LiDAR port is {port}")
-                return port
-        print("No LiDAR sensor detected.")
-        return
+    # Print them
+    for device_id, device_info in devices_dict.items():
+        print(f"{device_id} -- {device_info[ID_MODEL]} ({device_info[ID_MODEL_ID]} - {device_info[ID_VENDOR_ID]})")
+        if f"{device_info[ID_MODEL_ID]}-{device_info[ID_VENDOR_ID]}" == "7523-1A86":
+            return ID_MODEL_ID
+    print("LiDAR not detected.")
+    return None
 
 if __name__ == '__main__':
     main()
