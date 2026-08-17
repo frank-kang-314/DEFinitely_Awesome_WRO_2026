@@ -43,24 +43,56 @@ block_positions = [
     (240,200),
     (260,200)
 ]
-   
-class Wall():
+
+class Object:
+    def __init__(self):
+        pass
+    def update_position(self, **data):
+        pass
+       
+class Wall(Object):
     def __init__(self):
         pass
 
-class Block():
+class Block(Object):
     def __init__(self, color, position):
         self.color = color
         self.position = position
 
-class ParkingLot():
+class ParkingLot(Object):
     def __init__(self):
         pass
 
-class Map():
-    def __init__(self, challenge_type, direction, laps):
-        self.challenge_type = challenge_type
-        self.direction = direction
-        self.laps = laps
+class Map:
+    laps = 0
+    def __init__(self):
+        pass
+    def setup(self):
+        #Set challenge type (open/obstacle) and direction (clockwise/counterclockwise)
+        pass
     def recalibrate(self):
         pass
+
+class Steering:
+    def __init__(self):
+        pass
+    def turn(angle: int):
+        pass
+    def move(*, direction: str, speed: float):
+        pass
+    def brake():
+        pass
+
+class Car: 
+    def __init__(self):
+        pass
+    def start(self):
+        map = Map()
+        map.setup()
+    def leave_parking_lot(self):
+        pass
+    def park(self):
+        pass
+
+car = Car()
+car.start()
