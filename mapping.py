@@ -45,6 +45,7 @@ import cv2
 import time
 import base64
 import numpy as np
+import threading
 
 rect_types = {
     "no_collide_outer": "NO_COLLIDE_OUTER", #things you can't hit the outside of, like traffic signs
@@ -300,7 +301,7 @@ class Car:
     def drive(self, challenge_type):
         self.leave_parking_lot()
 
-        #blahblahblah insert driving stuff here blahblahblah
+            #blahblahblah insert driving stuff here blahblahblah
 
         self.park()
 
