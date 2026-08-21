@@ -24,14 +24,31 @@ Map:
     * Record seen obstacles
     * Update car position
     * Send instructions to steering
+
+
+Processes needed:     
+
+1. Ultrasonic sensor data
+2. Camera data
+3. Steering instructions & main control
+
 """
 
-
+import multiprocessing
 
 rect_types = {
     "no_collide_outer": "NO_COLLIDE_OUTER", #things you can't hit the outside of, like traffic signs
     "no_collide_inner": "NO_COLLIDE_INNER", #things you can't hit the inside of, like the outer walls)
     }
+
+def main():
+    car = Car()
+
+    p1 = multiprocessing.Process(target=Sensors.read_ultrasonic)
+    p2 = multiprocessing.Process(target=Sensors.read_camera)
+    p3 = multiprocessing.Process(target=Car.drive)
+
+    car.start()
 
 class Rect:
     def __init__(self, *, bottom_left_corner, width, height, type):
@@ -54,8 +71,7 @@ class Wall(Rect):
             self.bottom_left_corner = (0,0)
             self.width = 300
             self.height = 300
-            self.type = rect_types["no_collide_inner"]
-            
+            self.type = rect_types["no_collide_inner"]            
 
 class Block(Rect):
     def __init__(self, color, position):
@@ -143,11 +159,17 @@ class Car:
 
         map = Map()
         map.setup()
+    def drive(self, challenge_type):
+        self.leave_parking_lot()
+
+        #blahblahblah insert driving stuff here blahblahblah
+
+        self.park()
 
     def leave_parking_lot(self):
         pass
     def park(self):
         pass
 
-car = Car()
-car.start()
+if __name__ == "__main__":
+    main()
