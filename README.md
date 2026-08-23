@@ -5,8 +5,8 @@ Team name:
 DEFinitely Awesome
 
 Team members: 
-\* Deren Suntur
-\* Frank Kang
+* Deren Suntur
+* Frank Kang
 
 ## Introduction
 
