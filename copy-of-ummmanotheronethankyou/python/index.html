@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>WRO Car — Monitor</title>
+        <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #1a1a2e; color: #eee; font-family: monospace; padding: 16px; }
+        h1 { color: #00d4ff; font-size: 1rem; letter-spacing: 2px; margin-bottom: 14px; }
+        .layout { display: flex; gap: 16px; flex-wrap: wrap; }
+
+        /* Camera feed */
+        #feed-wrap { position: relative; width: 640px; height: 480px;
+            background: #000; border: 2px solid #00d4ff44; border-radius: 6px; overflow: hidden; }
+        #feed { width: 640px; height: 480px; object-fit: contain; display: block; }
+        .waiting { position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: #555; font-size: 13px; gap: 8px; }
+
+        .panel { display: flex; flex-direction: column; gap: 12px; width: 300px; }
+        .card  { background: #0d0d1a; border: 1px solid #00d4ff22; border-radius: 6px; padding: 12px; }
+        .card h2 { color: #00d4ff; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+            margin-bottom: 10px; border-bottom: 1px solid #00d4ff22; padding-bottom: 6px; }
+
+        /* Status badge */
+        #status { display: inline-block; font-size: 11px; padding: 3px 10px; border-radius: 12px;
+            background: #ff4d4d22; color: #ff4d4d; border: 1px solid #ff4d4d44; margin-bottom: 14px; }
+        #status.on { background: #4dff8822; color: #4dff88; border-color: #4dff8844; }
+
+        /* Big command display */
+        #cmd-box { font-size: 1.6rem; font-weight: bold; text-align: center;
+            padding: 12px; border-radius: 6px; background: #111; letter-spacing: 3px;
+            color: #00d4ff; transition: color 0.2s, background 0.2s; }
+        #cmd-box.LEFT     { color: #ff4d4d; background: #ff4d4d11; }
+        #cmd-box.RIGHT    { color: #4dff88; background: #4dff8811; }
+        #cmd-box.STRAIGHT { color: #00d4ff; background: #00d4ff11; }
+
+        /* Sensor bars */
+        .sensor-row { display: flex; align-items: center; gap: 10px;
+            font-size: 11px; margin-bottom: 8px; }
+        .sensor-label { width: 45px; color: #aaa; }
+        .bar-wrap { flex: 1; background: #1a1a2e; border-radius: 4px; height: 14px; overflow: hidden; }
+        .bar { height: 100%; border-radius: 4px; transition: width 0.2s, background 0.2s; }
+        .bar.safe    { background: #4dff88; }
+        .bar.warning { background: #ffaa00; }
+        .bar.danger  { background: #ff4d4d; }
+        .sensor-val  { width: 38px; text-align: right; font-size: 11px; }
+
+        /* Action description */
+        #action-desc { font-size: 12px; color: #ccc; text-align: center;
+            padding: 8px; background: #111; border-radius: 4px; line-height: 1.6; }
+
+        /* Event log */
+        #event-log { list-style: none; font-size: 11px; line-height: 1.8;
+            max-height: 140px; overflow-y: auto; }
+        #event-log li { border-bottom: 1px solid #ffffff08; padding: 2px 0; }
+        .ev-wall    { color: #ffaa00; }
+        .ev-turn    { color: #00d4ff; }
+        .ev-status  { color: #4dff88; }
+        .ev-time    { color: #444; margin-left: 6px; font-size: 10px; }
+
+        /* Pillar log */
+        #det-log { list-style: none; font-size: 11px; line-height: 1.9; max-height: 150px; overflow-y: auto; }
+        .det-RED   { color: #ff6060; }
+        .det-GREEN { color: #4dff88; }
+        .det-time  { color: #555; margin-left: 6px; font-size: 10px; }
+        </style>
+    </head>
+    <body>
+
+    <h1>🚗 WRO 2026 — MONITOR</h1>
+    <span id="status">● Disconnected</span>
+
+    <div class="layout">
+
+    <!-- Camera -->
+    <div id="feed-wrap">
+        <div class="waiting" id="waiting">📷 Waiting for stream…</div>
+        <img id="feed" alt="" style="display:none">
+    </div>
+
+    <!-- Panel -->
+    <div class="panel">
+
+        <!-- Current command + description -->
+        <div class="card">
+        <h2>What the car is doing</h2>
+        <div id="cmd-box" class="STRAIGHT">STRAIGHT</div>
+        <div id="action-desc" style="margin-top:8px">Waiting for data…</div>
+        </div>
+
+        <!-- Ultrasonic sensor bars -->
+        <div class="card">
+        <h2>Ultrasonic Sensors (cm)</h2>
+        <div class="sensor-row">
+            <span class="sensor-label">FRONT</span>
+            <div class="bar-wrap"><div class="bar safe" id="bar-front" style="width:100%"></div></div>
+            <span class="sensor-val" id="val-front">—</span>
+        </div>
+        <div class="sensor-row">
+            <span class="sensor-label">LEFT</span>
+            <div class="bar-wrap"><div class="bar safe" id="bar-left"  style="width:100%"></div></div>
+            <span class="sensor-val" id="val-left">—</span>
+        </div>
+        <div class="sensor-row">
+            <span class="sensor-label">RIGHT</span>
+            <div class="bar-wrap"><div class="bar safe" id="bar-right" style="width:100%"></div></div>
+            <span class="sensor-val" id="val-right">—</span>
+        </div>
+        </div>
+
+        <!-- Arduino event log -->
+        <div class="card">
+        <h2>Arduino Events</h2>
+        <ul id="event-log"></ul>
+        </div>
+
+        <!-- Pillar detections -->
+        <div class="card">
+        <h2>Pillar Detections</h2>
+        <ul id="det-log"></ul>
+        </div>
+
+    </div>
+    </div>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script>
+    const socket  = io(`http://${window.location.host}`);
+    const status  = document.getElementById('status');
+    const feed    = document.getElementById('feed');
+    const waiting = document.getElementById('waiting');
+    const cmdBox  = document.getElementById('cmd-box');
+    const actionDesc = document.getElementById('action-desc');
+    const detLog  = document.getElementById('det-log');
+    const evLog   = document.getElementById('event-log');
+
+    const MAX_SENSOR_CM = 100;  // bar is full at 100cm+
+
+    socket.on('connect',    () => { status.textContent = '● Connected';    status.className = 'on'; });
+    socket.on('disconnect', () => { status.textContent = '● Disconnected'; status.className = ''; });
+
+    // ── Camera frame ──────────────────────────────────────
+    socket.on('frame', msg => {
+        waiting.style.display = 'none';
+        feed.style.display    = 'block';
+        feed.src = 'data:image/jpeg;base64,' + msg.data;
+    });
+
+    // ── Command display ────────────────────────────────────
+    socket.on('command', msg => {
+        const cmd = msg.cmd || 'STRAIGHT';
+        cmdBox.textContent = cmd;
+        cmdBox.className   = cmd;
+        const descriptions = {
+        'STRAIGHT': '✅ No obstacles detected — driving straight.',
+        'LEFT':     '🔴 RED pillar detected — steering LEFT\n(WRO rule: pass red on the right)',
+        'RIGHT':    '🟢 GREEN pillar detected — steering RIGHT\n(WRO rule: pass green on the left)',
+        };
+        actionDesc.textContent = descriptions[cmd] || '';
+    });
+
+    // ── Sensor bars ────────────────────────────────────────
+    socket.on('sensors', msg => {
+        updateBar('front', msg.front);
+        updateBar('left',  msg.left);
+        updateBar('right', msg.right);
+    });
+
+    function updateBar(name, cm) {
+        const val  = document.getElementById('val-' + name);
+        const bar  = document.getElementById('bar-' + name);
+        const disp = cm >= 999 ? '>100' : cm;
+        val.textContent = disp + 'cm';
+        const pct = Math.min(100, (cm / MAX_SENSOR_CM) * 100);
+        bar.style.width = pct + '%';
+        // Colour: red <25cm, orange 25-40cm, green >40cm
+        if (cm < 25)       { bar.className = 'bar danger';  }
+        else if (cm < 40)  { bar.className = 'bar warning'; }
+        else               { bar.className = 'bar safe';    }
+    }
+
+    // ── Arduino events ─────────────────────────────────────
+    socket.on('arduino_event', msg => {
+        const raw = msg.event || '';
+        const ts  = new Date().toLocaleTimeString('en', {hour12: false});
+        const li  = document.createElement('li');
+
+        let cls = 'ev-status';
+        let text = raw;
+        if (raw.includes('WALL'))    { cls = 'ev-wall';   text = '⚠ Wall detected — initiating turn'; }
+        if (raw.includes('TURNING:LEFT'))  { cls = 'ev-turn'; text = '↰ Turning LEFT to avoid wall'; }
+        if (raw.includes('TURNING:RIGHT')) { cls = 'ev-turn'; text = '↱ Turning RIGHT to avoid wall'; }
+        if (raw.includes('TURNING:DONE'))  { cls = 'ev-turn'; text = '↑ Turn complete — going straight'; }
+        if (raw.includes('STARTED'))       { cls = 'ev-status'; text = '🟢 Button pressed — motors ON'; }
+        if (raw.includes('WAITING'))       { cls = 'ev-status'; text = '⏳ Waiting for start button…'; }
+
+        li.className = cls;
+        li.innerHTML = `${text}<span class="ev-time">${ts}</span>`;
+        evLog.prepend(li);
+        while (evLog.children.length > 30) evLog.removeChild(evLog.lastChild);
+    });
+
+    // ── Pillar detections ──────────────────────────────────
+    socket.on('detection', msg => {
+        const color = msg.color || msg.content;
+        const ts    = new Date(msg.timestamp).toLocaleTimeString('en', {hour12: false});
+        const li    = document.createElement('li');
+        li.className = `det-${color}`;
+        const dist  = msg.distance ? ` ~${msg.distance}cm` : '';
+        li.innerHTML = `${color} ${msg.side}${dist}<span class="det-time">${ts}</span>`;
+        detLog.prepend(li);
+        while (detLog.children.length > 40) detLog.removeChild(detLog.lastChild);
+    });
+    </script>
+    </body>
+</html>
