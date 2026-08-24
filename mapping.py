@@ -150,6 +150,9 @@ class Steering:
 class Ultrasonic:
     def __init__(self):
         pass
+    def read_ultrasonic(self):
+        while True:
+            
 
 class Camera:
     # ─── CONFIG ───────────────────────────────────────────────
