@@ -38,6 +38,10 @@ Processes needed:
 
 """
 
+# ---------- IMPORT STATEMENTS ----------
+
+from gpiozero import DistanceSensor, AngularServo
+
 import multiprocessing
 
 from datetime import datetime, UTC
@@ -47,19 +51,37 @@ import base64
 import numpy as np
 import threading
 
+# ---------- VARIABLES ----------
+
 rect_types = {
     "no_collide_outer": "NO_COLLIDE_OUTER", #things you can't hit the outside of, like traffic signs
     "no_collide_inner": "NO_COLLIDE_INNER", #things you can't hit the inside of, like the outer walls)
     }
 
+pins = {
+    "ULTRASONIC_FRONT_TRIG": 23, 
+    "ULTRASONIC_FRONT_ECHO": 24,
+    "ULTRASONIC_LEFT_TRIG": 17,
+    "ULTRASONIC_LEFT_ECHO": 27,
+    "ULTRASONIC_RIGHT_TRIG": 22,
+    "ULTRASONIC_RIGHT_ECHO": 5,
+    "SERVO":  18
+}
+
+ULTRASONIC_MAX_DISTANCE = 4
+
+# ---------- MAIN FUNCTION ----------
+
 def main():
     car = Car()
 
-    p1 = multiprocessing.Process(target=Ultrasonic.read_ultrasonic)
-    p2 = multiprocessing.Process(target=Camera.read_camera)
-    p3 = multiprocessing.Process(target=Car.drive)
+    # p1 = multiprocessing.Process(target=Car.read_ultrasonics)
+    # p2 = multiprocessing.Process(target=Camera.read_camera)
+    # p3 = multiprocessing.Process(target=Car.drive)
 
     car.start()
+
+# ---------- CLASSES ----------
 
 class Rect:
     def __init__(self, *, bottom_left_corner, width, height, type):
@@ -128,31 +150,30 @@ class Map:
     def increment_laps(self):
         pass
 
-class Steering:
+class Motors:
     def __init__(self):
         pass
 
     def start(self):
         pass
 
-    def turn(self, angle: int):
-        #Straight: 110
-        #Left: 150
-        #Right: 60
-        pass
-
     def move(self, *, direction: str, speed: float):
         pass
 
-    def brake(self):
+    def stop(self):
         pass
 
 class Ultrasonic:
-    def __init__(self):
-        pass
-    def read_ultrasonic(self):
-        while True:
-            
+    #If necessary, make ultrasonic sensor constantly collect new data in separate process.
+    #Then, if other functions call this function, take the most recent data
+    def __init__(self, *, echo, trig):
+        self.sensor = DistanceSensor(echo, trig, max_distance=ULTRASONIC_MAX_DISTANCE)
+        self.STOP_SIGNAL = False
+    def read_sensor(self):
+        distance = self.sensor.distance * 100 #in centimeters
+        return distance
+    # def stop_sensor(self):
+    #     self.STOP_SIGNAL = True
 
 class Camera:
     # ─── CONFIG ───────────────────────────────────────────────
@@ -176,7 +197,7 @@ class Camera:
     }
 
     def __init__(self):
-            pass
+        pass
 
     def get_mask(self, hsv, color):
         mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
@@ -209,7 +230,7 @@ class Camera:
 
 
     # Shared detection state — written by camera thread, read by main loop
-    _lock            = threading.Lock()
+    _lock = threading.Lock()
     _latest_pillars  = []   # list of detection dicts
 
     def get_latest_pillars():
@@ -289,25 +310,147 @@ class Camera:
     def return_data(self):
         pass
 
+class Servo:
+    # Servo angles (degrees)
+    ANGLE_STRAIGHT = 110
+    ANGLE_MAX_LEFT = 150
+    ANGLE_MAX_RIGHT = 60
+
+    # Distance thresholds (cm)
+    FRONT_TURN_TRIGGER = 25        # front obstacle closer than this -> consider turning
+    SIDE_OPEN_TRIGGER = 80         # a side reading above this counts as "open" (no wall)
+
+    CORRECTION_LOW = 40            # "both sides ~50ish" band, lower bound
+    CORRECTION_HIGH = 60           # "both sides ~50ish" band, upper bound
+    CORRECTION_DIFF_TRIGGER = 6    # if |left - right| >= this, nudge toward the farther side
+    CORRECTION_GAIN = 0.4          # degrees of nudge per cm of difference (tune on the track)
+    CORRECTION_MAX_OFFSET = 15     # cap how far a "slight correction" can push off straight
+
+    TURN_COOLDOWN_S = 1.0          # ignore new turn triggers for this long after a turn starts
+    TURN_DURATION_S = 0.6          # how long the servo holds the turn angle before returning straight
+
+    LAPS_TARGET = 3
+    TURNS_PER_LAP = 4              # standard 4-corner WRO track; change if your track differs
+    TOTAL_TURNS_TARGET = LAPS_TARGET * TURNS_PER_LAP
+
+    def make_servo():
+        return AngularServo(
+            pins["SERVO"],
+            min_angle=0,
+            max_angle=180,
+            min_pulse_width=0.0005,   # 500us -> 0 degrees
+            max_pulse_width=0.0025,   # 2500us -> 180 degrees
+        )
+
+
+
 class Car:
     #Insert actual measurements when chassis is complete
     width, height = 20, 30 #in centimeters
+    LOOP_HZ = 20 # main loop rate
     def __init__(self):
         pass
     def start(self):
-        steering = Steering()
+        self.camera = Camera()
+        self.front_sensor = Ultrasonic(echo=pins["ULTRASONIC_A_ECHO"],trig=pins["ULTRASONIC_A_TRIG"])
+        self.left_sensor = Ultrasonic(echo=pins["ULTRASONIC_B_ECHO"],trig=pins["ULTRASONIC_B_TRIG"])
+        self.right_sensor = Ultrasonic(echo=pins["ULTRASONIC_C_ECHO"],trig=pins["ULTRASONIC_C_TRIG"])
+        
+        self.map = Map()
+        self.map.setup()
 
-        camera = Camera()
+    def compute_steering(front, left, right, last_turn_time, turn_count, turning_until, turn_angle_active):
+        """
+        Decide the servo angle and whether a turn/lap should be counted.
+        Returns (angle, new_turn_count, new_turning_until, new_turn_angle_active)
+        """
+        now = time.monotonic()
 
-        map = Map()
-        map.setup()
-    def drive(self, challenge_type):
-        self.leave_parking_lot()
+        # If we're mid-turn, keep holding the turn angle until TURN_DURATION_S elapses.
+        if now < turning_until:
+            return turn_angle_active, turn_count, turning_until, turn_angle_active
 
-            #blahblahblah insert driving stuff here blahblahblah
+        # Cooldown: don't evaluate a brand-new turn trigger too soon after the last one.
+        in_cooldown = (now - last_turn_time) < Servo.TURN_COOLDOWN_S
 
+        if not in_cooldown and front < Servo.FRONT_TURN_TRIGGER:
+            left_open = left > Servo.SIDE_OPEN_TRIGGER
+            right_open = right > Servo.SIDE_OPEN_TRIGGER
+
+            if left_open and not right_open:
+                # left side is clear -> turn left
+                angle = Servo.ANGLE_MAX_LEFT
+            elif right_open and not left_open:
+                # right side is clear -> turn right
+                angle = Servo.ANGLE_MAX_RIGHT
+            elif left_open and right_open:
+                # both sides clear: no signal for which way, default to right
+                angle = Servo.ANGLE_MAX_RIGHT
+            else:
+                # front blocked but neither side reads "open" - can't safely turn yet,
+                # go straight and let the car close in / a side reading update
+                return Servo.ANGLE_STRAIGHT, turn_count, turning_until, Servo.ANGLE_STRAIGHT
+
+            turn_count += 1
+            turning_until = now + Servo.TURN_DURATION_S
+            return angle, turn_count, turning_until, angle
+
+        # Not turning: check the "both sides ~50cm but uneven" correction case
+        both_in_band = (Servo.CORRECTION_LOW <= left <= Servo.CORRECTION_HIGH) and (Servo.CORRECTION_LOW <= right <= Servo.CORRECTION_HIGH)
+        diff = left - right
+
+        if both_in_band and abs(diff) >= Servo.CORRECTION_DIFF_TRIGGER:
+            # nudge toward the side that's farther away (the bigger reading)
+            offset = diff * Servo.CORRECTION_GAIN
+            offset = max(-Servo.CORRECTION_MAX_OFFSET, min(Servo.CORRECTION_MAX_OFFSET, offset))
+            # left is bigger (diff > 0) -> steer left (toward larger angle, since left=150)
+            angle = Servo.ANGLE_STRAIGHT + offset
+            return angle, turn_count, turning_until, Servo.ANGLE_STRAIGHT
+
+        return Servo.ANGLE_STRAIGHT, turn_count, turning_until, Servo.ANGLE_STRAIGHT
+
+    def drive_open(self):
+        self.servo.angle = Servo.ANGLE_STRAIGHT
+
+        turn_count = 0
+        last_turn_time = 0.0
+        turning_until = 0.0
+
+        turn_angle_active = Servo.ANGLE_STRAIGHT
+
+        print(f"Target: {Servo.TOTAL_TURNS_TARGET} turns ({Servo.LAPS_TARGET} laps x {Servo.TURNS_PER_LAP} turns/lap)")
+
+        Motors.move(direction="forward", speed=0.6)  # start moving forward - tune this value
+
+        try:
+            while turn_count < Servo.TOTAL_TURNS_TARGET:
+                front = self.front_sensor.read_sensor()
+                left = self.left_sensor.read_sensor()
+                right = self.right_sensor.read_sensor()
+
+                was_turning = time.monotonic() < turning_until
+
+                angle, turn_count, turning_until, turn_angle_active = self.compute_steering(
+                    front, left, right, last_turn_time, turn_count, turning_until, turn_angle_active
+                )
+
+                if not was_turning and time.monotonic() < turning_until:
+                    # a new turn just started this iteration
+                    last_turn_time = time.monotonic()
+                    print(f"Turn #{turn_count} -> angle {angle}  (front={front:.1f} left={left:.1f} right={right:.1f})")
+
+                self.servo.angle = angle
+                time.sleep(1.0 / Servo.LOOP_HZ)
+
+            print(f"Reached {turn_count} turns ({Servo.LAPS_TARGET} laps). Stopping.")
+
+        finally:
+            Motors.stop()
+            self.angle = Servo.ANGLE_STRAIGHT
+
+
+    def drive_obstacle(self):
         self.park()
-
     def leave_parking_lot(self):
         pass
     def park(self):
