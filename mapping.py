@@ -117,39 +117,6 @@ class ParkingLot(Rect):
     def __init__(self):
         pass
 
-class Map:
-    __laps = 0 #Private variable
-    track_width = 300
-
-    #Coordinates range from (0,0) (bottom left) to (300,300) (top right)
-
-    block_positions =((100,40), (100,60), (150,40), (150,60), (200,40), (200,60), (40,100), (60,100), (40,150), (60,150), (40,200), (60,200), (100,240), (100,260), (150,240), (150,260), (200,240), (200,260), (240,100), (260,100), (240,150), (260,150), (240,200), (260,200))
-
-    def __init__(self):
-        pass
-    def setup(self):
-        #This is the list where all future objects on the map will be added
-        self.objects = []
-
-        self.objects.append(Wall(location = "outer"))
-
-        #Set challenge type (open/obstacle) and direction (clockwise/counterclockwise)
-
-        #Set current position
-
-        #Start looking for obstacles
-        pass
-    def add(self):
-        #Add new objects as the car discovers more of the track
-        pass
-        
-    def recalibrate(self):
-        pass
-    def check_laps(self):
-        return self.__laps
-    def increment_laps(self):
-        pass
-
 class Motors:
     def __init__(self):
         pass
@@ -169,7 +136,9 @@ class Ultrasonic:
     def __init__(self, *, echo, trig):
         self.sensor = DistanceSensor(echo, trig, max_distance=ULTRASONIC_MAX_DISTANCE)
         self.STOP_SIGNAL = False
+        self.readings = []
     def read_sensor(self):
+        now = time.monotonic()
         distance = self.sensor.distance * 100 #in centimeters
         return distance
     # def stop_sensor(self):
@@ -342,8 +311,6 @@ class Servo:
             max_pulse_width=0.0025,   # 2500us -> 180 degrees
         )
 
-
-
 class Car:
     #Insert actual measurements when chassis is complete
     width, height = 20, 30 #in centimeters
@@ -355,9 +322,6 @@ class Car:
         self.front_sensor = Ultrasonic(echo=pins["ULTRASONIC_A_ECHO"],trig=pins["ULTRASONIC_A_TRIG"])
         self.left_sensor = Ultrasonic(echo=pins["ULTRASONIC_B_ECHO"],trig=pins["ULTRASONIC_B_TRIG"])
         self.right_sensor = Ultrasonic(echo=pins["ULTRASONIC_C_ECHO"],trig=pins["ULTRASONIC_C_TRIG"])
-        
-        self.map = Map()
-        self.map.setup()
 
     def compute_steering(front, left, right, last_turn_time, turn_count, turning_until, turn_angle_active):
         """
@@ -450,10 +414,61 @@ class Car:
 
 
     def drive_obstacle(self):
+        self.map = Map()
+        self.map.setup()
+
+        parking_lot_detected = None
+        if parking_lot_detected:
+            self.leave_parking_lot()
+        while self.map.laps < 12:
+            if something:
+                pass
+            else: 
+                move_straight()
+            
+
         self.park()
+
+    def move_straight():
+        
     def leave_parking_lot(self):
         pass
     def park(self):
+        pass
+
+class Map:
+    laps = 0
+    track_width = 300
+
+    #Coordinates range from (0,0) (bottom left) to (300,300) (top right)
+
+    block_positions =((100,40), (100,60), (150,40), (150,60), (200,40), (200,60), (40,100), (60,100), (40,150), (60,150), (40,200), (60,200), (100,240), (100,260), (150,240), (150,260), (200,240), (200,260), (240,100), (260,100), (240,150), (260,150), (240,200), (260,200))
+
+    def __init__(self):
+        pass
+    def setup(self):
+        #This is the list where all future objects on the map will be added
+        self.objects = []
+
+        self.objects.append(Wall(location = "outer"))
+
+        #Set challenge type (open/obstacle) and direction (clockwise/counterclockwise)
+
+
+
+        #Set current position
+
+        #Start looking for obstacles
+        pass
+    def add(self):
+        #Add new objects as the car discovers more of the track
+        pass
+        
+    def recalibrate(self):
+        pass
+    def check_laps(self):
+        return self.__laps
+    def increment_laps(self):
         pass
 
 if __name__ == "__main__":
