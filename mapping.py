@@ -131,18 +131,39 @@ class Motors:
         pass
 
 class Ultrasonic:
-    #If necessary, make ultrasonic sensor constantly collect new data in separate process.
-    #Then, if other functions call this function, take the most recent data
+    #Run the read_sensor function to get the latest sensor data. 
+    #Takes the latest five values to ensure that a single inaccurate reading doesn't affect the output.
     def __init__(self, *, echo, trig):
         self.sensor = DistanceSensor(echo, trig, max_distance=ULTRASONIC_MAX_DISTANCE)
         self.STOP_SIGNAL = False
         self.readings = []
+        self.frequency = 20
+        self.outlier_tolerance = 0.25
     def read_sensor(self):
-        now = time.monotonic()
-        distance = self.sensor.distance * 100 #in centimeters
-        return distance
-    # def stop_sensor(self):
-    #     self.STOP_SIGNAL = True
+        while True: 
+            distance = self.sensor.distance * 100 #in centimeters
+            self.readings.append(distance)
+            if len(self.readings) >= 5:
+                while len(self.readings) > 5: 
+                    self.readings.pop(0)
+            time.sleep(1 / self.frequency)
+            if self.STOP_SIGNAL:
+                break
+    def get_data(self):
+        if not self.is_outlier(self.readings[-1]):
+            return self.readings[-1]
+        else: 
+            for i in range(-1, -11, -1):
+                if not self.is_outlier(self.readings[i]):
+                    return self.readings[i]
+    def stop_sensor(self):
+            self.STOP_SIGNAL = True
+            
+    def is_outlier(self, value):
+        others_average = (sum(self.readings) - value) / (len(self.readings) - 1)
+        if value > (1 + self.outlier_tolerance) * others_average or (1 - self.outlier_tolerance) * others_average:
+            return True
+        return False
 
 class Camera:
     # ─── CONFIG ───────────────────────────────────────────────
