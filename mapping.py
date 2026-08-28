@@ -74,12 +74,15 @@ ULTRASONIC_MAX_DISTANCE = 4
 
 def main():
     car = Car()
+    car.start()
+    
+    p1 = multiprocessing.Process(target=car.left_sensor.read_sensor)
+    p2 = multiprocessing.Process(target=car.front_sensor.read_sensor)
+    p1 = multiprocessing.Process(target=car.right_sensor.read_sensor)
 
-    # p1 = multiprocessing.Process(target=Car.read_ultrasonics)
+    # p1 = multiprocessing.Process(target=Ultrasonic.read_sensor)
     # p2 = multiprocessing.Process(target=Camera.read_camera)
     # p3 = multiprocessing.Process(target=Car.drive)
-
-    car.start()
 
 # ---------- CLASSES ----------
 
@@ -117,19 +120,6 @@ class ParkingLot(Rect):
     def __init__(self):
         pass
 
-class Motors:
-    def __init__(self):
-        pass
-
-    def start(self):
-        pass
-
-    def move(self, *, direction: str, speed: float):
-        pass
-
-    def stop(self):
-        pass
-
 class Ultrasonic:
     #Run the read_sensor function to get the latest sensor data. 
     #Takes the latest five values to ensure that a single inaccurate reading doesn't affect the output.
@@ -144,7 +134,7 @@ class Ultrasonic:
             distance = self.sensor.distance * 100 #in centimeters
             self.readings.append(distance)
             if len(self.readings) >= 5:
-                while len(self.readings) > 5: 
+                while len(self.readings) > 50: 
                     self.readings.pop(0)
             time.sleep(1 / self.frequency)
             if self.STOP_SIGNAL:
@@ -153,17 +143,20 @@ class Ultrasonic:
         if not self.is_outlier(self.readings[-1]):
             return self.readings[-1]
         else: 
-            for i in range(-1, -11, -1):
+            for i in range(-1, -6, -1):
                 if not self.is_outlier(self.readings[i]):
                     return self.readings[i]
     def stop_sensor(self):
             self.STOP_SIGNAL = True
-            
+
     def is_outlier(self, value):
-        others_average = (sum(self.readings) - value) / (len(self.readings) - 1)
+        others_average = (sum(self.readings[-5:-1]) - value) / (len(self.readings[-5:-1]) - 1)
         if value > (1 + self.outlier_tolerance) * others_average or (1 - self.outlier_tolerance) * others_average:
             return True
         return False
+
+class Motors: 
+    
 
 class Camera:
     # ─── CONFIG ───────────────────────────────────────────────
@@ -306,6 +299,9 @@ class Servo:
     ANGLE_MAX_LEFT = 150
     ANGLE_MAX_RIGHT = 60
 
+    LEFT_CORRECTION_ANGLE = 130
+    RIGHT_CORRECTION_ANGLE = 90
+
     # Distance thresholds (cm)
     FRONT_TURN_TRIGGER = 25        # front obstacle closer than this -> consider turning
     SIDE_OPEN_TRIGGER = 80         # a side reading above this counts as "open" (no wall)
@@ -405,7 +401,7 @@ class Car:
 
         print(f"Target: {Servo.TOTAL_TURNS_TARGET} turns ({Servo.LAPS_TARGET} laps x {Servo.TURNS_PER_LAP} turns/lap)")
 
-        Motors.move(direction="forward", speed=0.6)  # start moving forward - tune this value
+        self.move_straight(0.6)  # start moving forward - tune this value
 
         try:
             while turn_count < Servo.TOTAL_TURNS_TARGET:
@@ -442,15 +438,30 @@ class Car:
         if parking_lot_detected:
             self.leave_parking_lot()
         while self.map.laps < 12:
-            if something:
-                pass
-            else: 
-                move_straight()
-            
+            map.add(self.camera.get_latest_pillars())
+            compute_movement()
 
         self.park()
 
-    def move_straight():
+    def compute_movement():
+        #Either the car is turning on a corner, or is navigating through the obstacles on one of the four side sections. 
+        
+
+
+    def move_straight(self, speed):
+        Motors.drive(direction = forward, speed = speed)
+        if is_increasing(self.left_sensor.readings) and is_decreasing(self.right_sensor.readings):
+            self.servo.angle = Servo.LEFT_CORRECTION_ANGLE
+        elif is_increasing(self.right_sensor.readings) and is_decreasing(self.left_sensor.readings):
+            self.servo.angle = Servo.RIGHT_CORRECTION_ANGLE
+        else: 
+            self.servo.angle = Servo.ANGLE_STRAIGHT
+
+    def is_increasing(given_list):
+        
+
+
+    
         
     def leave_parking_lot(self):
         pass
@@ -474,8 +485,6 @@ class Map:
         self.objects.append(Wall(location = "outer"))
 
         #Set challenge type (open/obstacle) and direction (clockwise/counterclockwise)
-
-
 
         #Set current position
 
